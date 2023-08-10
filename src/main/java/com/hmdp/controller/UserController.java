@@ -14,10 +14,16 @@ import com.hmdp.utils.RegexPatterns;
 import com.hmdp.utils.RegexUtils;
 import com.hmdp.utils.UserHolder;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpSession;
+
+import java.util.concurrent.TimeUnit;
+
+import static com.hmdp.utils.RedisConstants.LOGIN_CODE_KEY;
+import static com.hmdp.utils.RedisConstants.LOGIN_CODE_TTL;
 
 /**
  * <p>
@@ -36,6 +42,9 @@ public class UserController {
     private IUserService userService;
 
     @Resource
+    private StringRedisTemplate StringRedisTemplate;
+
+    @Resource
     private IUserInfoService userInfoService;
 
     /**
@@ -52,11 +61,10 @@ public class UserController {
         }
         //手机格式正确 生成验证码
         String code= RandomUtil.randomNumbers(6);
-        //将验证码保存到session中
-        session.setAttribute("code",code);
+        //将验证码保存到redis中，用特定前缀和phone做key，code作为值
+        StringRedisTemplate.opsForValue().set(LOGIN_CODE_KEY+phone,code,LOGIN_CODE_TTL, TimeUnit.MINUTES);
         // 5.发送验证码
         log.debug("发送短信验证码成功，验证码：{}", code);
-
         // 返回ok
         return Result.ok();
     }
