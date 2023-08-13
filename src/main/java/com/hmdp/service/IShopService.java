@@ -14,7 +14,19 @@ import com.baomidou.mybatisplus.extension.service.IService;
  */
 public interface IShopService extends IService<Shop> {
 
+    /**
+     * 解决缓存穿透的问题
+     * @param id
+     * @return
+     */
     Result queryById(Long id);
+
+    /**
+     * 利用setnx原理 用互斥锁来实现缓存击穿的问题
+     * @param id
+     * @return
+     */
+    Result queryWithMutex(Long id);
 
     Result updateShop(Shop shop);
 }
