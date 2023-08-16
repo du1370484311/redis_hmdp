@@ -29,4 +29,7 @@ public interface IShopService extends IService<Shop> {
     Result queryWithMutex(Long id);
 
     Result updateShop(Shop shop);
+
+    //用逻辑过期解决缓存击穿的问题
+    Shop queryWithLogicExpire(Long id);
 }
