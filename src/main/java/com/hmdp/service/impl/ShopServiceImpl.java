@@ -9,6 +9,8 @@ import com.hmdp.entity.Shop;
 import com.hmdp.mapper.ShopMapper;
 import com.hmdp.service.IShopService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.utils.RedisClient;
+import com.hmdp.utils.RedisConstants;
 import com.hmdp.utils.RedisData;
 import io.netty.util.internal.StringUtil;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -38,7 +40,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
-    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
+    @Resource
+    private RedisClient redisClient;
+
+//    private static final ExecutorService CACHE_REBUILD_EXECUTOR = Executors.newFixedThreadPool(10);
 
     @Override
     public Result queryById(Long id) {
@@ -86,47 +91,52 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
 
     @Override
     public Shop queryWithLogicExpire(Long id) {
-        String key=CACHE_SHOP_KEY+id;
-        //1.先去缓存中查询一下是否有数据
-        //1.1没有数据直接返回空
-        String shopJson = stringRedisTemplate.opsForValue().get(key);
-        if (StrUtil.isBlank(shopJson)){
-            return null;
-        }
-        //1.2有数据 判断是否过期
-        RedisData redisData = JSONUtil.toBean(shopJson, RedisData.class);
-        LocalDateTime expireTime = redisData.getExpireTime();
-        //这里要多转一步
-        JSONObject data = (JSONObject)redisData.getData();
-        Shop shop = JSONUtil.toBean(data, Shop.class);
-        //1.3没有过期  则直接返回数据
-        if (expireTime.isAfter(LocalDateTime.now())){
-           return shop;
-        }
-        //1.4 过期了  尝试去获取锁
-        String lockKey=LOCK_SHOP_KEY+id;
-        boolean isLock = getLock(lockKey);
-        //获取成功 则开启独立线程去查询数据库 然后重建缓存
-        if (isLock){
-            //这里要做double check
-            //为了避免一个线程释放锁的同时另一个线程获取到了锁，那么之后的缓存重建就没有必要了
-            //过期了
-            if (!expireTime.isAfter(LocalDateTime.now())){
-                CACHE_REBUILD_EXECUTOR.submit(()->{
-                    try {
-                        this.saveToRedis(id,20L);
-                    }catch (Exception e){
-                        throw new RuntimeException(e);
-                    }
-                    finally {
-                        unlock(lockKey);
-                    }
-                });
-            }
-
-        }
-        return shop;
+        return redisClient.queryWithLogicalExpire(CACHE_SHOP_KEY,id,Shop.class,this::getById, 10L,TimeUnit.SECONDS);
     }
+
+    //    @Override
+//    public Shop queryWithLogicExpire(Long id) {
+//        String key=CACHE_SHOP_KEY+id;
+//        //1.先去缓存中查询一下是否有数据
+//        //1.1没有数据直接返回空
+//        String shopJson = stringRedisTemplate.opsForValue().get(key);
+//        if (StrUtil.isBlank(shopJson)){
+//            return null;
+//        }
+//        //1.2有数据 判断是否过期
+//        RedisData redisData = JSONUtil.toBean(shopJson, RedisData.class);
+//        LocalDateTime expireTime = redisData.getExpireTime();
+//        //这里要多转一步
+//        JSONObject data = (JSONObject)redisData.getData();
+//        Shop shop = JSONUtil.toBean(data, Shop.class);
+//        //1.3没有过期  则直接返回数据
+//        if (expireTime.isAfter(LocalDateTime.now())){
+//           return shop;
+//        }
+//        //1.4 过期了  尝试去获取锁
+//        String lockKey=LOCK_SHOP_KEY+id;
+//        boolean isLock = getLock(lockKey);
+//        //获取成功 则开启独立线程去查询数据库 然后重建缓存
+//        if (isLock){
+//            //这里要做double check
+//            //为了避免一个线程释放锁的同时另一个线程获取到了锁，那么之后的缓存重建就没有必要了
+//            //过期了
+//            if (!expireTime.isAfter(LocalDateTime.now())){
+//                CACHE_REBUILD_EXECUTOR.submit(()->{
+//                    try {
+//                        this.saveToRedis(id,20L);
+//                    }catch (Exception e){
+//                        throw new RuntimeException(e);
+//                    }
+//                    finally {
+//                        unlock(lockKey);
+//                    }
+//                });
+//            }
+//
+//        }
+//        return shop;
+//    }
 
     @Override
     public Result queryWithMutex(Long id) {
